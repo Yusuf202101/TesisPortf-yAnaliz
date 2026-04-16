@@ -85,3 +85,11 @@ def items_to_series(items: list, value_key: str = "toplam") -> dict:
         hour_val = it.get("time") or f"{it.get('hour', 0):02d}:00"
         result[f"{date_str} {hour_val}"] = it.get(value_key, 0)
     return result
+
+# api.py sonuna ekle
+def filter_only_res(facilities):
+    """Sadece adında 'RES' geçen tesisleri döndürür."""
+    return {k: v for k, v in facilities.items() if "RES" in k.upper()}
+
+# Mevcut get_kudüp ve get_uevm fonksiyonlarını kullanarak 
+# veri çekme döngüsü app.py içinde zaten var, oraya müdahale edeceğiz.
