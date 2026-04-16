@@ -1,6 +1,8 @@
 import streamlit as st
 from datetime import datetime, date
 import traceback
+import pandas as pd  # Yeni eklendi
+import analysis as anls  # Yeni oluşturduğun analiz dosyası
 
 from api import (
     get_tgt, get_organizations, get_uevcb_list,
@@ -67,6 +69,17 @@ with st.sidebar:
 
     # ── Tesis Listesi Cache ────────────────────────────────────────
     st.header("📦 Tesis Veritabanı")
+    # app.py Sidebar içindeki "st.header("📦 Tesis Veritabanı")" satırından sonrasına:
+
+    if st.session_state.facilities:
+        if st.checkbox("🎯 Sadece RES'leri Listele", help="İçinde RES geçen tesisleri süzer"):
+            # Orijinal listeyi bozmamak için geçici bir değişkende filtrele
+            filtered_fac = anls.filter_only_res(st.session_state.facilities)
+            display_facilities = filtered_fac
+        else:
+            display_facilities = st.session_state.facilities
+    else:
+        display_facilities = {}
 
     cached = load_cache()
     if cached and not st.session_state.cache_loaded:
@@ -136,7 +149,7 @@ with col_search:
 
         if keyword and len(keyword) >= 2:
             kw    = keyword.strip().upper()
-            hits  = [lbl for lbl in st.session_state.facilities if kw in lbl.upper()][:60]
+            hits = [lbl for lbl in display_facilities if kw in lbl.upper()][:60]
 
             if hits:
                 st.caption(f"{len(hits)} sonuç bulundu — seçip 'Ekle' butonuna bas")
@@ -261,6 +274,43 @@ with col_run:
             st.session_state.excel_bytes = excel_bytes
             st.session_state.excel_fname = fname
             st.success(f"✅ Excel hazır — {len(facility_data)} tesis, {len(time_index)} satır")
+            # app.py içinde "st.success(f"✅ Excel hazır...")" satırının hemen altına:
+
+            st.divider()
+            st.subheader("📊 Portföy Analizi (Sapma Optimizasyonu)")
+            
+            try:
+                with st.spinner("Matematiksel analiz yapılıyor..."):
+                    # 1. 744 Saatlik Matrisi Oluştur
+                    df_sapma = anls.create_imbalance_matrix(facility_data, time_index)
+                    
+                    # 2. Analizi Çalıştır
+                    direction, pairs, corr = anls.find_portfolio_pairs(df_sapma)
+                    
+                    # 3. Görselleştirme - Tablar
+                    tab1, tab2, tab3 = st.tabs(["📈 Sapma Grafiği", "🤝 Eşleşmeler", "📉 Korelasyon"])
+                    
+                    with tab1:
+                        st.line_chart(df_sapma)
+                        st.caption("Pozitif değerler sistem fazlası, negatifler sistem açığıdır.")
+                        
+                    with tab2:
+                        c1, c2 = st.columns(2)
+                        c1.write("### Tesis Yönleri")
+                        c1.dataframe(direction.rename("Ağırlıklı Yön"))
+                        
+                        c2.write("### Önerilen Eşleşmeler")
+                        if not pairs:
+                            c2.warning("Zıt yönlü sapan tesis bulunamadı.")
+                        for p in pairs:
+                            c2.success(f"**{p[0]}** & **{p[1]}**\n\nZıtlık (Korelasyon): {p[2]:.2f}")
+                            
+                    with tab3:
+                        st.write("Tesislerin birbirine olan etkisi (-1 tam zıt, +1 aynı yön)")
+                        st.dataframe(corr.style.background_gradient(cmap='RdBu_r', axis=None))
+
+except Exception as e:
+    st.error(f"Analiz sırasında bir hata oluştu: {e}")
 
         except Exception as e:
             log.empty()
